@@ -6,6 +6,7 @@ namespace :load do
     set :interval, "5"
     set :resque_environment_task, false
     set :resque_log_file, "/dev/null"
+    set :resque_separate_worker_logs, true
     set :resque_verbose, true
     set :resque_pid_path, -> { File.join(shared_path, 'tmp', 'pids') }
     set :resque_dynamic_schedule, false
@@ -19,8 +20,13 @@ namespace :resque do
       fetch(:stage)              # so we need to fall back to the stage.
   end
 
-  def output_redirection
-    ">> #{fetch(:resque_log_file)} 2>> #{fetch(:resque_log_file)}"
+  def output_redirection(identifier="")
+    if fetch(:resque_separate_worker_logs) == false || fetch(:fetch(:resque_log_file)) == "/dev/null"
+      identifier_out, identifier_err = "", "" 
+    else
+      identifier_out, identifier_err = "#{identifier}_out", "#{identifier}_err" 
+    end
+    ">> #{fetch(:resque_log_file)}#{identifier_out} 2>> #{fetch(:resque_log_file)}#{identifier_err}"
   end
 
   def workers_roles
@@ -71,7 +77,7 @@ namespace :resque do
           number_of_workers.times do
             pid = "#{fetch(:resque_pid_path)}/resque_work_#{worker_id}.pid"
             within current_path do
-              execute :nohup, %{#{SSHKit.config.command_map[:rake]} RACK_ENV=#{rails_env} RAILS_ENV=#{rails_env} #{fetch(:resque_extra_env)} QUEUE="#{queue}" PIDFILE=#{pid} BACKGROUND=yes #{"VERBOSE=1 " if fetch(:resque_verbose)}INTERVAL=#{fetch(:interval)} #{"environment " if fetch(:resque_environment_task)}resque:work #{output_redirection}}
+              execute :nohup, %{#{SSHKit.config.command_map[:rake]} RACK_ENV=#{rails_env} RAILS_ENV=#{rails_env} #{fetch(:resque_extra_env)} QUEUE="#{queue}" PIDFILE=#{pid} BACKGROUND=yes #{"VERBOSE=1 " if fetch(:resque_verbose)}INTERVAL=#{fetch(:interval)} #{"environment " if fetch(:resque_environment_task)}resque:work #{output_redirection("_worker_#{worker_id}")}}
             end
             worker_id += 1
           end
@@ -131,7 +137,7 @@ namespace :resque do
         create_pid_path
         pid = "#{fetch(:resque_pid_path)}/scheduler.pid"
         within current_path do
-          execute :nohup, %{#{SSHKit.config.command_map[:rake]} RACK_ENV=#{rails_env} RAILS_ENV=#{rails_env} #{fetch(:resque_extra_env)} PIDFILE=#{pid} BACKGROUND=yes #{"VERBOSE=1 " if fetch(:resque_verbose)}MUTE=1 #{"DYNAMIC_SCHEDULE=yes " if fetch(:resque_dynamic_schedule)}#{"environment " if fetch(:resque_environment_task)}resque:scheduler #{output_redirection}}
+          execute :nohup, %{#{SSHKit.config.command_map[:rake]} RACK_ENV=#{rails_env} RAILS_ENV=#{rails_env} #{fetch(:resque_extra_env)} PIDFILE=#{pid} BACKGROUND=yes #{"VERBOSE=1 " if fetch(:resque_verbose)}MUTE=1 #{"DYNAMIC_SCHEDULE=yes " if fetch(:resque_dynamic_schedule)}#{"environment " if fetch(:resque_environment_task)}resque:scheduler #{output_redirection('_scheduler')}}
         end
       end
     end
